@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.3
+
+- Race up to 16 resolved and pinned peer addresses with bounded 250 ms
+  staggering, aborting the remaining attempts after the first authenticated
+  HTTPS response.
+- Validate the entire candidate set against the public-address policy before
+  opening any connection.
+- Add a real-socket mutual-TLS test covering address fallback, DNS SAN and
+  certificate-pin validation, client authentication, and public-address policy.
+
 ## 0.0.2
 
 - Preserve the certificate fingerprint from TLS identity verification so the

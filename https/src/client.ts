@@ -14,6 +14,8 @@ import {
 const normalizeFingerprint = (value: string): string => value.toUpperCase();
 const pem = (value: string | Uint8Array): string | Buffer =>
   typeof value === "string" ? value : Buffer.from(value);
+const CONNECTION_ATTEMPT_DELAY_MS = 250;
+const MAXIMUM_PEER_ADDRESSES = 16;
 
 const isPrivateIpv4 = (address: string): boolean => {
   const octets = address.split(".").map(Number);
@@ -64,32 +66,15 @@ export type NodeMutualTlsFederationClientOptions = {
   readonly requestTimeoutMs: number;
 };
 
-export const createNodeMutualTlsFederationClient = (
+const requestAddress = (
   options: NodeMutualTlsFederationClientOptions,
-): FederationMutualTlsClient => ({
-  request: (input) =>
-    new Promise((resolve, reject) => {
+  input: Parameters<FederationMutualTlsClient["request"]>[0],
+  address: string,
+  signal: AbortSignal,
+) =>
+  new Promise<Awaited<ReturnType<FederationMutualTlsClient["request"]>>>(
+    (resolve, reject) => {
       let authenticatedCertificateFingerprintSha256: string | undefined;
-      if (
-        input.peer.addresses.length === 0 ||
-        !Number.isSafeInteger(input.peer.port) ||
-        input.peer.port < 1 ||
-        input.peer.port > 65_535 ||
-        !input.path.startsWith("/") ||
-        input.path.includes("#")
-      ) {
-        reject(new Error("Federation HTTPS peer or request path is invalid."));
-        return;
-      }
-      const address = input.peer.addresses[0] as string;
-      if (
-        isIP(address) === 0 ||
-        ((options.addressPolicy ?? "public-only") === "public-only" &&
-          !isPublicFederationAddress(address))
-      ) {
-        reject(new Error("Federation HTTPS address policy rejected the peer."));
-        return;
-      }
       const request = httpsRequest(
         {
           ca: pem(options.ca),
@@ -126,6 +111,7 @@ export const createNodeMutualTlsFederationClient = (
           port: String(input.peer.port),
           rejectUnauthorized: true,
           servername: input.peer.domain,
+          signal,
         },
         (response) => {
           const chunks: Uint8Array[] = [];
@@ -165,7 +151,84 @@ export const createNodeMutualTlsFederationClient = (
       request.on("error", reject);
       if (input.body !== undefined) request.write(input.body);
       request.end();
-    }),
+    },
+  );
+
+const delayedRequestAddress = async (
+  options: NodeMutualTlsFederationClientOptions,
+  input: Parameters<FederationMutualTlsClient["request"]>[0],
+  address: string,
+  delayMs: number,
+  signal: AbortSignal,
+) => {
+  if (delayMs > 0)
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(resolve, delayMs);
+      signal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timer);
+          reject(signal.reason);
+        },
+        { once: true },
+      );
+    });
+  return requestAddress(options, input, address, signal);
+};
+
+export const createNodeMutualTlsFederationClient = (
+  options: NodeMutualTlsFederationClientOptions,
+): FederationMutualTlsClient => ({
+  request: async (input) => {
+    const addresses = [...new Set(input.peer.addresses)];
+    if (
+      addresses.length === 0 ||
+      addresses.length > MAXIMUM_PEER_ADDRESSES ||
+      !Number.isSafeInteger(input.peer.port) ||
+      input.peer.port < 1 ||
+      input.peer.port > 65_535 ||
+      !input.path.startsWith("/") ||
+      input.path.includes("#")
+    ) {
+      throw new Error("Federation HTTPS peer or request path is invalid.");
+    }
+    if (
+      addresses.some(
+        (address) =>
+          isIP(address) === 0 ||
+          ((options.addressPolicy ?? "public-only") === "public-only" &&
+            !isPublicFederationAddress(address)),
+      )
+    ) {
+      throw new Error("Federation HTTPS address policy rejected the peer.");
+    }
+    const controllers = addresses.map(() => new AbortController());
+    try {
+      return await Promise.any(
+        addresses.map((address, index) =>
+          (() => {
+            const controller = controllers[index];
+            if (controller === undefined)
+              throw new Error("Federation HTTPS race state is invalid.");
+            return delayedRequestAddress(
+              options,
+              input,
+              address,
+              index * CONNECTION_ATTEMPT_DELAY_MS,
+              controller.signal,
+            );
+          })(),
+        ),
+      );
+    } catch (error) {
+      throw new Error("Every federation HTTPS address failed.", {
+        cause: error,
+      });
+    } finally {
+      for (const controller of controllers)
+        controller.abort(new Error("Federation HTTPS race settled."));
+    }
+  },
 });
 
 export const discoverFederationHttpsPeer = async (input: {
