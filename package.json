@@ -1,0 +1,19 @@
+{
+  "name": "@absolutejs/secure-messaging-federation-adapters",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "mimi",
+    "webcrypto"
+  ],
+  "scripts": {
+    "build": "bun run --filter './*' build",
+    "check:package": "bun run --filter './*' check:package",
+    "format": "prettier --write \"./**/*.{ts,json,md}\"",
+    "test": "bun run --filter './*' test",
+    "typecheck": "bun run --filter './*' typecheck"
+  },
+  "devDependencies": {
+    "prettier": "3.9.6"
+  }
+}
