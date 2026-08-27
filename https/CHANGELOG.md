@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.2
+
+- Preserve the certificate fingerprint from TLS identity verification so the
+  Node mutual-TLS client also works on Bun, whose compatibility response socket
+  does not expose `getPeerCertificate`.
+
 ## 0.0.1
 
 - Add authenticated, expiring HTTPS discovery with certificate rotation pins.

@@ -1,11 +1,7 @@
 import { Buffer } from "node:buffer";
 import { isIP } from "node:net";
 import { request as httpsRequest } from "node:https";
-import {
-  checkServerIdentity,
-  type PeerCertificate,
-  type TLSSocket,
-} from "node:tls";
+import { checkServerIdentity } from "node:tls";
 import { decodeFederationHttpsAdvertisement } from "./codec";
 import {
   HTTPS_FEDERATION_PROTOCOL,
@@ -73,6 +69,7 @@ export const createNodeMutualTlsFederationClient = (
 ): FederationMutualTlsClient => ({
   request: (input) =>
     new Promise((resolve, reject) => {
+      let authenticatedCertificateFingerprintSha256: string | undefined;
       if (
         input.peer.addresses.length === 0 ||
         !Number.isSafeInteger(input.peer.port) ||
@@ -109,6 +106,9 @@ export const createNodeMutualTlsFederationClient = (
               !pins.includes(normalizeFingerprint(certificate.fingerprint256))
             )
               return new Error("Federation HTTPS certificate pin mismatch.");
+            authenticatedCertificateFingerprintSha256 = normalizeFingerprint(
+              certificate.fingerprint256,
+            );
             return undefined;
           },
           headers: {
@@ -141,13 +141,7 @@ export const createNodeMutualTlsFederationClient = (
             chunks.push(Uint8Array.from(chunk));
           });
           response.on("end", () => {
-            const certificate = (
-              response.socket as TLSSocket
-            ).getPeerCertificate(false) as PeerCertificate;
-            if (
-              typeof certificate.fingerprint256 !== "string" ||
-              certificate.fingerprint256.length === 0
-            ) {
+            if (authenticatedCertificateFingerprintSha256 === undefined) {
               reject(new Error("Federation HTTPS peer certificate is absent."));
               return;
             }
@@ -157,9 +151,8 @@ export const createNodeMutualTlsFederationClient = (
               else if (Array.isArray(value)) headers[name] = value.join(", ");
             resolve({
               body: Uint8Array.from(chunks.flatMap((chunk) => [...chunk])),
-              certificateFingerprintSha256: normalizeFingerprint(
-                certificate.fingerprint256,
-              ),
+              certificateFingerprintSha256:
+                authenticatedCertificateFingerprintSha256,
               headers: Object.freeze(headers),
               status: response.statusCode ?? 0,
             });

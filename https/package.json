@@ -1,6 +1,6 @@
 {
   "name": "@absolutejs/secure-messaging-federation-https",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Hardened HTTPS and mutual-TLS transport adapter for AbsoluteJS secure messaging federation.",
   "type": "module",
   "license": "Apache-2.0",
