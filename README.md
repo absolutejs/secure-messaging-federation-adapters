@@ -3,6 +3,11 @@
 Interchangeable implementations for
 `@absolutejs/secure-messaging-federation`:
 
+- `@absolutejs/secure-messaging-federation-delivery` bridges real protected
+  secure-messaging/MLS frames to a negotiated federation transport.
+- `@absolutejs/secure-messaging-federation-https` provides a hardened HTTPS and
+  mutual-TLS hop with authenticated discovery, certificate pins, bounded
+  responses, and SSRF/DNS-rebinding defenses.
 - `@absolutejs/secure-messaging-federation-webcrypto` provides domain signatures
   and endpoint-sealed abuse evidence with standard Web Crypto keys.
 - `@absolutejs/secure-messaging-federation-mimi` pins and validates an explicit
